@@ -186,7 +186,8 @@ function parseMultiAttr(locatorStr: string, tag: string): BiDiLocator {
 }
 
 function cssEscapeValue(val: string): string {
-  return val.replace(/'/g, "\\'").replace(/"/g, '\\"');
+  // Escape backslashes first, then quotes
+  return val.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
 }
 
 function looksLikeCssSelector(s: string): boolean {

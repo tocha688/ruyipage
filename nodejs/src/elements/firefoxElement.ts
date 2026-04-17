@@ -193,18 +193,41 @@ export class FirefoxElement {
   }
 
   async attr(name: string): Promise<string | null> {
-    return this._runSafe(`(el) => el.getAttribute(${JSON.stringify(name)})`).then(v => v as string | null);
+    const result = await this._callJsOnSelfRaw(
+      '(el, attrName) => el.getAttribute(attrName)',
+      { type: 'string', value: name }
+    ).catch(() => null);
+    if (!result) return null;
+    const rv = result['result'] as Record<string, unknown> | undefined;
+    if (!rv) return null;
+    const parsed = parseValue(rv);
+    return parsed as string | null;
   }
 
   async property(name: string): Promise<unknown> {
-    return this._runSafe(`(el) => el[${JSON.stringify(name)}]`);
+    const result = await this._callJsOnSelfRaw(
+      '(el, propName) => el[propName]',
+      { type: 'string', value: name }
+    ).catch(() => null);
+    if (!result) return null;
+    const rv = result['result'] as Record<string, unknown> | undefined;
+    return rv ? parseValue(rv) : null;
   }
 
   async style(name: string, pseudo?: string): Promise<string> {
-    const pseudoArg = pseudo ? JSON.stringify(pseudo) : 'null';
-    return this._runSafe(
-      `(el) => window.getComputedStyle(el, ${pseudoArg}).getPropertyValue(${JSON.stringify(name)})`
-    ).then(v => (v as string) || '');
+    const args: unknown[] = [{ type: 'string', value: name }];
+    if (pseudo !== undefined) {
+      args.push({ type: 'string', value: pseudo });
+    } else {
+      args.push({ type: 'null' });
+    }
+    const result = await this._callJsOnSelfRaw(
+      '(el, propName, pseudo) => window.getComputedStyle(el, pseudo || null).getPropertyValue(propName)',
+      ...args
+    ).catch(() => null);
+    if (!result) return '';
+    const rv = result['result'] as Record<string, unknown> | undefined;
+    return (rv ? parseValue(rv) as string : '') || '';
   }
 
   async click(byJs = false, timeout?: number): Promise<this> {
