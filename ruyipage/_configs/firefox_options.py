@@ -51,6 +51,7 @@ class FirefoxOptions(object):
             "script": 30,
         }
         self._existing_only = False
+        self._close_on_exit = True
         self._retry_times = 10
         self._retry_interval = 2.0
         self._proxy = None
@@ -61,6 +62,7 @@ class FirefoxOptions(object):
         self._user_prompt_handler = None  # session.UserPromptHandler
         self._xpath_picker_enabled = False  # 页面 XPath 选择浮窗
         self._action_visual_enabled = False  # 鼠标行为可视化调试
+        self._human_algorithm = "bezier"  # 拟人鼠标轨迹算法
 
     # ===== 属性读取 =====
 
@@ -117,6 +119,11 @@ class FirefoxOptions(object):
         return self._retry_times
 
     @property
+    def close_on_exit_enabled(self):
+        """Python 进程退出时是否自动关闭浏览器。"""
+        return self._close_on_exit
+
+    @property
     def retry_interval(self):
         return self._retry_interval
 
@@ -156,6 +163,11 @@ class FirefoxOptions(object):
     def action_visual_enabled(self):
         """是否启用鼠标行为可视化调试模式。"""
         return self._action_visual_enabled
+
+    @property
+    def human_algorithm(self):
+        """默认拟人鼠标轨迹算法。"""
+        return self._human_algorithm
 
     # ===== 链式设置方法 =====
 
@@ -391,6 +403,26 @@ class FirefoxOptions(object):
         self._existing_only = on_off
         return self
 
+    def close_on_exit(self, on_off=True):
+        """设置 Python 进程退出时是否自动关闭浏览器。
+
+        Args:
+            on_off: ``True`` 表示当前 Python 程序退出时自动关闭由 ruyipage
+                    启动的浏览器；``False`` 表示仅断开连接，不主动关闭浏览器。
+
+        Returns:
+            self
+
+        说明：
+            - 默认值为 ``True``，更符合“脚本结束即收尾”的直觉。
+            - 对 ``existing_only(True)`` 接管的外部浏览器，此选项不会强制杀掉
+              外部进程；退出时仍只做断开连接，避免误关用户自己打开的浏览器。
+            - 对 ruyipage 自动创建的临时 profile，若执行完整关闭，会一并清理
+              该临时目录。
+        """
+        self._close_on_exit = bool(on_off)
+        return self
+
     def set_auto_port(self, on_off=True):
         """自动寻找可用端口
 
@@ -484,6 +516,30 @@ class FirefoxOptions(object):
         self._action_visual_enabled = bool(on_off)
         return self
 
+    def set_human_algorithm(self, name="bezier"):
+        """设置默认拟人鼠标轨迹算法。
+
+        Args:
+            name: 轨迹算法名。
+                当前支持：
+                - ``"bezier"``：当前默认算法，轨迹更平滑，支持 ``style`` 变体
+                - ``"windmouse"``：模拟风力 + 重力拖拽的轨迹，路径更飘逸
+
+        Returns:
+            self
+
+        说明：
+            - 默认值为 ``"bezier"``，兼容已有行为。
+            - 该设置会作为 ``page.actions.human_move()`` /
+              ``page.actions.human_click()`` 的默认算法。
+            - 单次调用时可通过 ``algorithm=...`` 覆盖这里的默认值。
+        """
+        value = str(name or "bezier").strip().lower()
+        if value not in ("bezier", "windmouse"):
+            raise ValueError('human_algorithm 必须是 "bezier" 或 "windmouse"')
+        self._human_algorithm = value
+        return self
+
     def _get_proxy_auth_credentials(self):
         """从 fpfile 中读取代理认证用户名密码。"""
         auth = self._read_httpauth_from_fpfile(self._fpfile)
@@ -555,10 +611,12 @@ class FirefoxOptions(object):
         *,
         browser_path=None,
         user_dir=None,
+        close_on_exit=True,
         private=False,
         headless=False,
         xpath_picker=False,
         action_visual=False,
+        human_algorithm="bezier",
         window_size=(1280, 800),
         timeout_base=10,
         timeout_page_load=30,
@@ -574,10 +632,14 @@ class FirefoxOptions(object):
                 适用于 Firefox 安装在非默认目录时。
             user_dir: 用户目录 / profile 目录。
                 适用于希望复用登录态、Cookie、扩展时。
+            close_on_exit: Python 程序退出时是否自动关闭浏览器。
+                默认 ``True``，适合脚本跑完自动收尾。
             private: 是否启用 Firefox 私密浏览模式。
             headless: 是否无头
             xpath_picker: 是否启用页面 XPath 选择浮窗
             action_visual: 是否启用鼠标行为可视化调试模式
+            human_algorithm: 默认拟人鼠标轨迹算法。
+                可选 ``"bezier"`` 或 ``"windmouse"``。
             window_size: 窗口大小 (width, height)
             timeout_base: 基础超时
             timeout_page_load: 页面加载超时
@@ -599,10 +661,12 @@ class FirefoxOptions(object):
             self.set_browser_path(browser_path)
         if user_dir:
             self.set_user_dir(user_dir)
+        self.close_on_exit(close_on_exit)
         self.private_mode(private)
         self.headless(headless)
         self.enable_xpath_picker(xpath_picker)
         self.enable_action_visual(action_visual)
+        self.set_human_algorithm(human_algorithm)
         if window_size and len(window_size) == 2:
             self.set_window_size(window_size[0], window_size[1])
         self.set_timeouts(
