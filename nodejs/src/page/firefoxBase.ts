@@ -19,17 +19,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function loadModeToBiDiWait(mode: string): string {
+  if (mode === 'eager') return 'interactive';
+  if (mode === 'none') return 'none';
+  return 'complete';
+}
+
 export class FirefoxBase {
   _browser!: Firefox;
   _contextId!: string;
   _driver!: ContextDriver;
-  private _loadMode: string = 'normal';
+  private _loadMode: string = 'complete';
 
   _initContext(browser: Firefox, contextId: string): void {
     this._browser = browser;
     this._contextId = contextId;
     this._driver = browser.getContextDriver(contextId);
-    this._loadMode = browser.options.loadMode;
+    this._loadMode = loadModeToBiDiWait(browser.options.loadMode);
   }
 
   get tabId(): string {
@@ -39,7 +45,7 @@ export class FirefoxBase {
   // ===== Navigation =====
 
   async get(url: string, wait?: string): Promise<void> {
-    const waitStrategy = wait ?? this._loadMode ?? 'complete';
+    const waitStrategy = loadModeToBiDiWait(wait ?? this._loadMode);
     await bidiContext.navigate(this._driver, this._contextId, url, waitStrategy);
   }
 
