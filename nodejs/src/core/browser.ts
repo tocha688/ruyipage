@@ -47,10 +47,8 @@ function httpGet(url: string, timeoutMs = 3000): Promise<string> {
 
 async function getBiDiWsUrl(host: string, port: number, timeoutMs = 30000): Promise<string> {
   const sessionWs = `ws://${host}:${port}/session`;
-  const directWs = `ws://${host}:${port}`;
   const deadline = Date.now() + timeoutMs;
 
-  // First try the direct ws URL quickly
   const jsonUrl = `http://${host}:${port}/json`;
 
   while (Date.now() < deadline) {
@@ -60,8 +58,8 @@ async function getBiDiWsUrl(host: string, port: number, timeoutMs = 30000): Prom
       if (typeof data['webSocketDebuggerUrl'] === 'string') {
         return data['webSocketDebuggerUrl'] as string;
       }
-      // Some browsers return direct ws
-      return directWs;
+      // Firefox BiDi serves at /session, not at /
+      return sessionWs;
     } catch {
       // Not ready yet
     }
@@ -187,7 +185,6 @@ export class Firefox {
 
     const args = [
       `--remote-debugging-port=${port}`,
-      '--remote-allow-origins=*',
       '--no-remote',
     ];
 
@@ -205,10 +202,15 @@ export class Firefox {
     }
     args.push(...opts.arguments);
 
-    // Write user.js preferences
-    if (Object.keys(opts.preferences).length > 0 && profilePath) {
+    // Write user.js preferences (always include BiDi activation)
+    if (profilePath) {
       const userJsPath = path.join(profilePath, 'user.js');
-      const prefLines = Object.entries(opts.preferences).map(([k, v]) => {
+      const mergedPrefs: Record<string, unknown> = {
+        // Enable WebDriver BiDi protocol (2 = BiDi only, 3 = CDP + BiDi)
+        'remote.active-protocols': 2,
+        ...opts.preferences,
+      };
+      const prefLines = Object.entries(mergedPrefs).map(([k, v]) => {
         const val = typeof v === 'string' ? `"${v}"` : String(v);
         return `user_pref("${k}", ${val});`;
       });
